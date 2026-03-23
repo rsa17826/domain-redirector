@@ -56,7 +56,7 @@ new-site.{tld}
 ].org
 
 
-(basdsite.com:url) ; doesnt need a [] if is only 1 also doesnt require () if not being used 
+(basdsite.com:url) ; doesnt need a [] if is only 1
 ->
 [
   blocked.org/{url}#blocked
