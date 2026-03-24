@@ -82,7 +82,7 @@ function parseRulesText(text) {
   let currentBlock = ""
   let depth = 0
   let newlineCount = 0
-
+  let onRightSide = false
   // Manual iteration to track bracket depth for robust splitting
   for (let i = 0; i < cleaned.length; i++) {
     const char = cleaned[i]
@@ -99,11 +99,20 @@ function parseRulesText(text) {
     }
 
     // Split only if we see a double newline AND we are at the top level
-    if (depth === 0 && newlineCount >= 2) {
+    if (
+      depth === 0 &&
+      onRightSide &&
+      newlineCount > 0 &&
+      !currentBlock.trim().endsWith("->")
+    ) {
       const trimmed = currentBlock.trim()
       if (trimmed) blocks.push(trimmed)
+      onRightSide = false
       currentBlock = ""
       newlineCount = 0
+    }
+    if (depth === 0 && char == "-" && cleaned[i + 1] == ">") {
+      onRightSide = true
     }
   }
 

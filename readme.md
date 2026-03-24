@@ -91,6 +91,15 @@ Use `;` to add notes. The parser ignores everything after the semicolon.
 (old-site.com:url) -> new-site.com/{url} ; Includes path preservation
 ```
 <!-- [t tt](.com)->a.com works -->
+<!-- [t tt].com->a.com
+[t tt]2.com->a.com
+
+[t tt]2.com
+
+
+->
+a.com
+ -->
 ## this project was mostly created by ai
 
 ### Plans
