@@ -644,7 +644,7 @@ CodeMirror.registerHelper("fold", "domredir", function (cm, start) {
 
   const lastLine = cm.lastLine()
   let depth = 0
-  let foundArrowOnSubsequentLine = false
+  let foundArrowOnSubsequentLine = -1
   let endLine = -1
 
   for (let i = start.line; i <= lastLine; i++) {
@@ -658,7 +658,7 @@ CodeMirror.registerHelper("fold", "domredir", function (cm, start) {
 
       // Look for -> at the top level on any line AFTER the start line
       if (depth === 0 && char === "-" && line[j + 1] === ">") {
-        if (i > start.line) foundArrowOnSubsequentLine = true
+        if (i > start.line) foundArrowOnSubsequentLine = i
         else {
           break asd
         }
@@ -666,9 +666,14 @@ CodeMirror.registerHelper("fold", "domredir", function (cm, start) {
     }
 
     // 3. Block End Logic: Depth 0 + Found Arrow + Double Newline (or EOF)
+    const hasContentAfterArrow = !(
+      line === undefined || line.trim() === ""
+    )
     if (
       depth === 0 &&
-      foundArrowOnSubsequentLine
+      foundArrowOnSubsequentLine != -1 &&
+      foundArrowOnSubsequentLine != i &&
+      hasContentAfterArrow
     ) {
       endLine = i
       break
