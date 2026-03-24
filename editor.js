@@ -300,6 +300,8 @@ function initEditor() {
       indentUnit: 2,
       lineWrapping: false,
       autofocus: true,
+      foldGutter: true,
+      gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
       extraKeys: {
         "Ctrl-S": saveRules,
         "Cmd-S": saveRules,
@@ -609,3 +611,88 @@ function waitForCodeMirror(cb, attempts = 0) {
 }
 
 waitForCodeMirror(initEditor)
+// ─── Fold Helper for ; region / ; endregion ─────────────────────────────────
+function stripComments(text) {
+  return text
+    .split("\n")
+    .map((line) => {
+      const idx = line.indexOf(";")
+      return idx >= 0 ? line.slice(0, idx) : line
+    })
+    .join("\n")
+}
+var lastDetectedEnd = -1
+CodeMirror.registerHelper("fold", "domredir", function (cm, start) {
+  if (lastDetectedEnd == start.line) {
+    lastDetectedEnd = -1
+    return
+  }
+  const lineText = cm.getLine(start.line)
+  const trimmed = lineText.trim()
+
+  // 1. EXIT: Don't start on empty, comments, or lines that already have the arrow
+  if (
+    !trimmed ||
+    trimmed.startsWith(";") ||
+    lineText.includes("->")
+  ) {
+    return undefined
+  }
+
+  // 2. EXIT: Only start if the line looks like a Match Side (starts with [, (, <, or Alphanumeric)
+  if (!/^[\[\(\<a-zA-Z0-9]/.test(trimmed)) return undefined
+
+  const lastLine = cm.lastLine()
+  let depth = 0
+  let foundArrowOnSubsequentLine = false
+  let endLine = -1
+
+  for (let i = start.line; i <= lastLine; i++) {
+    const line = cm.getLine(i)
+
+    // Process characters for depth and arrow detection
+    asd: for (let j = 0; j < line.length; j++) {
+      const char = line[j]
+      if (char === "[" || char === "(") depth++
+      else if (char === "]" || char === ")") depth--
+
+      // Look for -> at the top level on any line AFTER the start line
+      if (depth === 0 && char === "-" && line[j + 1] === ">") {
+        if (i > start.line) foundArrowOnSubsequentLine = true
+        else {
+          break asd
+        }
+      }
+    }
+
+    // 3. Block End Logic: Depth 0 + Found Arrow + Double Newline (or EOF)
+    if (
+      depth === 0 &&
+      foundArrowOnSubsequentLine
+    ) {
+      endLine = i
+      break
+    }
+
+    // 4. Safety: If we hit another potential rule start before finding an arrow, kill this fold
+    if (
+      i > start.line &&
+      depth === 0 &&
+      line.trim() !== "" &&
+      !foundArrowOnSubsequentLine
+    ) {
+      break
+    }
+  }
+
+  // 5. Final return
+  if (foundArrowOnSubsequentLine && endLine > start.line) {
+    lastDetectedEnd = endLine
+    return {
+      from: CodeMirror.Pos(start.line, lineText.length),
+      to: CodeMirror.Pos(endLine, cm.getLine(endLine).length),
+    }
+  }
+
+  return undefined
+})
