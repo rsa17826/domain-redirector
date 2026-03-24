@@ -90,7 +90,7 @@ Use `;` to add notes. The parser ignores everything after the semicolon.
 ; Redirect all legacy traffic
 (old-site.com:url) -> new-site.com/{url} ; Includes path preservation
 ```
-
+<!-- [t tt](.com)->a.com works -->
 ## this project was mostly created by ai
 
 ### Plans

@@ -120,7 +120,7 @@ function parseRulesText(text) {
         "[DomainRedirector] Rule parse error:",
         e.message,
         "\nBlock:",
-        block
+        block,
       )
     }
   }
@@ -208,7 +208,7 @@ function parseListPattern(str) {
   const afterList = str.slice(listEnd + 1).trim() // everything after ]
 
   const matchItems = listContent
-    .split("\n")
+    .split(/\s+/)
     .map((l) => l.trim())
     .filter((l) => l)
     .map(parseListItem)
@@ -354,16 +354,17 @@ function tryMatchRule(hostname, rule) {
 
   // ── bare literal ──────────────────────────────────────────────────────────
   if (rule.matchMode === "bare") {
-    return hostname === rule.bareLiteral
-      ? { captures: { ...defaults } }
+    return hostname === rule.bareLiteral ?
+        { captures: { ...defaults } }
       : null
   }
 
   // ── full-hostname ─────────────────────────────────────────────────────────
   if (rule.matchMode === "full-hostname") {
     const captures = { ...defaults }
-    const capPart = rule.captureName
-      ? "(?<" + rule.captureName + ">" + rule.fullPattern + ")"
+    const capPart =
+      rule.captureName ?
+        "(?<" + rule.captureName + ">" + rule.fullPattern + ")"
       : "(?:" + rule.fullPattern + ")"
     let re
     try {
@@ -389,8 +390,9 @@ function tryMatchRule(hostname, rule) {
   } else if (suffix.type === "capture") {
     if (suffix.hasDot) suffixRe += "\\."
     suffixCapName = suffix.captureName
-    suffixRe += suffixCapName
-      ? "(?<" + suffixCapName + ">" + suffix.pattern + ")"
+    suffixRe +=
+      suffixCapName ?
+        "(?<" + suffixCapName + ">" + suffix.pattern + ")"
       : "(?:" + suffix.pattern + ")"
   }
   // type === 'none' → suffixRe stays ''
@@ -420,7 +422,7 @@ function tryMatchRule(hostname, rule) {
 
 function applyTemplate(template, captures) {
   return template.replace(/\{(\w+)\}/g, (_, name) =>
-    captures[name] !== undefined ? captures[name] : ""
+    captures[name] !== undefined ? captures[name] : "",
   )
 }
 
@@ -461,7 +463,7 @@ function applyRules(urlStr, rules) {
         ]
       const resolved = applyTemplate(
         item + rule.replaceSuffix,
-        match.captures
+        match.captures,
       )
       const redirect = buildRedirectUrl(url, resolved)
       if (redirect && redirect !== urlStr) return redirect
@@ -486,7 +488,7 @@ function testRules(urlStr, rules) {
       const allResults = rule.replaceItems.map((item) => {
         const resolved = applyTemplate(
           item + rule.replaceSuffix,
-          match.captures
+          match.captures,
         )
         return buildRedirectUrl(url, resolved) || resolved
       })
