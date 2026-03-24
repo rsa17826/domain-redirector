@@ -78,10 +78,38 @@ function parsePatternToken(token) {
 
 function parseRulesText(text) {
   const cleaned = stripComments(text)
-  const blocks = cleaned
-    .split(/\n(?:\s*\n)+/)
-    .map((b) => b.trim())
-    .filter((b) => b)
+  const blocks = []
+  let currentBlock = ""
+  let depth = 0
+  let newlineCount = 0
+
+  // Manual iteration to track bracket depth for robust splitting
+  for (let i = 0; i < cleaned.length; i++) {
+    const char = cleaned[i]
+
+    if (char === "[" || char === "(") depth++
+    else if (char === "]" || char === ")") depth--
+
+    currentBlock += char
+
+    if (char === "\n") {
+      newlineCount++
+    } else if (char.trim() !== "") {
+      newlineCount = 0
+    }
+
+    // Split only if we see a double newline AND we are at the top level
+    if (depth === 0 && newlineCount >= 2) {
+      const trimmed = currentBlock.trim()
+      if (trimmed) blocks.push(trimmed)
+      currentBlock = ""
+      newlineCount = 0
+    }
+  }
+
+  const finalTrimmed = currentBlock.trim()
+  if (finalTrimmed) blocks.push(finalTrimmed)
+
   const rules = []
   for (const block of blocks) {
     try {
