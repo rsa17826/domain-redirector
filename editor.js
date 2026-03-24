@@ -628,7 +628,10 @@ CodeMirror.registerHelper("fold", "domredir", function (cm, start) {
     return
   }
   const lineText = cm.getLine(start.line)
-  const trimmed = lineText.trim()
+  var trimmed = lineText.trim()
+  if (trimmed.includes(";")) {
+    trimmed = trimmed.substring(0, trimmed.indexOf(";"))
+  }
 
   // 1. EXIT: Don't start on empty, comments, or lines that already have the arrow
   if (
