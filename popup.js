@@ -27,7 +27,7 @@ chrome.storage.local.get(
     const count =
       data.lastDay === today ? data.dailyRedirects[today] || 0 : 0
     matchCountEl.textContent = count
-  },
+  }
 )
 
 // Toggle
@@ -36,7 +36,7 @@ toggle.addEventListener("change", () => {
     { type: "setEnabled", value: toggle.checked },
     () => {
       updateStatus(toggle.checked)
-    },
+    }
   )
 })
 

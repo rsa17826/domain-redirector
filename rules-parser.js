@@ -1,30 +1,41 @@
 /**
- * Domain Redirector — DSL Parser & Redirect Engine
+ * Domain Redirector — DSL Parser & Redirect Engine  v3
  *
- * Syntax summary:
- *   ; comment
- *   !name default_value          — set default for named capture
- *   [items](/<regex>:<name>)     — match: list of host prefixes + TLD capture
- *   ->                           — separator
- *   [items].{name}               — replace: list of templates + suffix
+ * Syntax overview:
  *
- * Items inside [...]:
- *   literal_text                 — exact match
- *   /regex                       — regex match
- *   /regex(.*?:captureName)      — regex with named capture inside
+ *   REGEX DELIMITER: <pattern>   (< > never appear in URLs so no escaping needed)
  *
- * Templates use {name} to insert captured values.
- * Rules are separated by blank lines.
+ * ── Match side ───────────────────────────────────────────────────────────────
+ *
+ *  Format A — list + explicit suffix
+ *    [                           ]         suffix
+ *      literal                   .com      literal .com  →  item.com
+ *      <regex>                   com       literal com   →  itemcom   (no dot)
+ *      <regex(.*:name)>          .(literal:name)
+ *    ]                           .(<regex>:name)
+ *
+ *  Format B — full hostname match (no list)
+ *    (literal.host:captureName)  — literal match, captures whole hostname
+ *    (<regex>:captureName)       — regex match
+ *    (literal)  (<regex>)        — unnamed variants
+ *
+ *  Format C — bare literal
+ *    old.example.com
+ *
+ * ── Arrow ────────────────────────────────────────────────────────────────────
+ *   ->                  (standalone line, or inline: host->other)
+ *
+ * ── Replace side ─────────────────────────────────────────────────────────────
+ *   [item1\n item2].suffix   — list (random pick) + optional literal suffix
+ *   single.host.{name}       — single template
+ *   host.org/{path}#frag     — full URL template (path/hash present → full URL)
+ *   {name}                   — inserts captured value
+ *
+ * ── Misc ─────────────────────────────────────────────────────────────────────
+ *   ; comment    !name default    blank line = rule separator
  */
 
-// ─── Utility ────────────────────────────────────────────────────────────────
-
-function escapeHtml(str) {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-}
+// ─── Utility ──────────────────────────────────────────────────────────────────
 
 function stripComments(text) {
   return text
@@ -36,12 +47,34 @@ function stripComments(text) {
     .join("\n")
 }
 
-// Convert DSL named captures  (content:name)  →  (?<name>content)
+/**
+ * Convert DSL capture shorthand inside a regex string:
+ *   (content:name)  →  (?<name>content)
+ * This works whether the regex came from <...> or elsewhere.
+ */
 function convertNamedCaptures(regexStr) {
   return regexStr.replace(/\(([^)]+?):(\w+)\)/g, "(?<$2>$1)")
 }
 
-// ─── Parsing ─────────────────────────────────────────────────────────────────
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+/**
+ * Parse a token that may be:
+ *   <regex(.*:name)>   → { isRegex: true,  pattern: convertedRegex }
+ *   literal            → { isRegex: false, pattern: escapedLiteral }
+ */
+function parsePatternToken(token) {
+  token = token.trim()
+  if (token.startsWith("<") && token.endsWith(">")) {
+    const inner = token.slice(1, -1)
+    return { isRegex: true, pattern: convertNamedCaptures(inner) }
+  }
+  return { isRegex: false, pattern: escapeRegex(token) }
+}
+
+// ─── Top-level ────────────────────────────────────────────────────────────────
 
 function parseRulesText(text) {
   const cleaned = stripComments(text)
@@ -50,7 +83,6 @@ function parseRulesText(text) {
     .map((b) => b.trim())
     .filter((b) => b)
   const rules = []
-
   for (const block of blocks) {
     try {
       const rule = parseRuleBlock(block)
@@ -60,101 +92,215 @@ function parseRulesText(text) {
         "[DomainRedirector] Rule parse error:",
         e.message,
         "\nBlock:",
-        block,
+        block
       )
     }
   }
   return rules
 }
 
+// ─── Block Parser ─────────────────────────────────────────────────────────────
+
 function parseRuleBlock(block) {
-  const lines = block.split("\n")
-  const arrowIdx = lines.findIndex((l) => l.trim() === "->")
-  if (arrowIdx < 0) return null
+  const lines = block
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l)
 
-  const matchLines = lines.slice(0, arrowIdx)
-  const replaceLines = lines.slice(arrowIdx + 1)
-
-  // ── Extract defaults (!name value) ──
+  // Extract !default lines
   const defaults = {}
-  const patternLines = []
-
-  for (const line of matchLines) {
-    const t = line.trim()
-    if (t.startsWith("!")) {
-      const m = t.match(/^!(\w+)\s+(.+)$/)
+  const contentLines = []
+  for (const line of lines) {
+    if (line.startsWith("!")) {
+      const m = line.match(/^!(\w+)\s+(.+)$/)
       if (m) defaults[m[1]] = m[2].trim()
     } else {
-      patternLines.push(line)
+      contentLines.push(line)
     }
   }
 
-  // ── Parse match side ──
-  const matchStr = patternLines.join("\n")
-  const matchResult = parseMatchPattern(matchStr)
-  if (!matchResult) return null
+  const content = contentLines.join("\n")
 
-  // ── Parse replace side ──
-  const replaceStr = replaceLines.join("\n").trim()
-  const replaceResult = parseReplacePattern(replaceStr)
-  if (!replaceResult) return null
+  // Find "->" — prefer standalone line, then inline (outside brackets)
+  let matchStr, replaceStr
+  const standaloneIdx = contentLines.findIndex((l) => l === "->")
 
-  return {
-    defaults,
-    matchItems: matchResult.matchItems,
-    tldPattern: matchResult.tldPattern,
-    tldName: matchResult.tldName,
-    replaceItems: replaceResult.items,
-    replaceSuffix: replaceResult.suffix,
+  if (standaloneIdx >= 0) {
+    matchStr = contentLines.slice(0, standaloneIdx).join("\n").trim()
+    replaceStr = contentLines
+      .slice(standaloneIdx + 1)
+      .join("\n")
+      .trim()
+  } else {
+    const arrowPos = findArrowOutsideBrackets(content)
+    if (arrowPos < 0) return null
+    matchStr = content.slice(0, arrowPos).trim()
+    replaceStr = content.slice(arrowPos + 2).trim()
   }
+
+  if (!matchStr || !replaceStr) return null
+
+  const matchResult = parseMatchPattern(matchStr)
+  const replaceResult = parseReplacePattern(replaceStr)
+  if (!matchResult || !replaceResult) return null
+
+  return { defaults, ...matchResult, ...replaceResult }
 }
 
+function findArrowOutsideBrackets(str) {
+  let depth = 0
+  for (let i = 0; i < str.length - 1; i++) {
+    const c = str[i]
+    if (c === "[" || c === "(") depth++
+    else if (c === "]" || c === ")") depth--
+    else if (depth === 0 && c === "-" && str[i + 1] === ">") return i
+  }
+  return -1
+}
+
+// ─── Match Pattern ────────────────────────────────────────────────────────────
+
 function parseMatchPattern(str) {
+  str = str.trim()
+  if (str.startsWith("[")) return parseListPattern(str)
+  if (str.startsWith("(")) return parseFullHostnamePattern(str)
+  if (str && !str.includes("\n"))
+    return { matchMode: "bare", bareLiteral: str }
+  return null
+}
+
+// ── Format A: list ────────────────────────────────────────────────────────────
+
+function parseListPattern(str) {
   const listStart = str.indexOf("[")
   const listEnd = str.lastIndexOf("]")
   if (listStart < 0 || listEnd < 0) return null
 
   const listContent = str.slice(listStart + 1, listEnd)
-  const afterList = str.slice(listEnd + 1).trim()
+  const afterList = str.slice(listEnd + 1).trim() // everything after ]
 
   const matchItems = listContent
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l)
-    .map(parseMatchItem)
+    .map(parseListItem)
 
-  // Parse TLD capture:  (/regex:name)  or  (/regex)  or  (regex:name)
-  let tldPattern = ".*"
-  let tldName = "_tld"
+  // Parse the suffix after ]
+  const suffix = parseSuffix(afterList)
 
-  if (afterList) {
-    // Strip outer parens
-    const inner = afterList
-      .replace(/^\(/, "")
-      .replace(/\)$/, "")
-      .trim()
-    // Strip leading / (regex marker)
-    const regexPart = inner.startsWith("/") ? inner.slice(1) : inner
-    // Split on last :word$ for the capture name
-    const colonMatch = regexPart.match(/^(.*):(\w+)$/)
-    if (colonMatch) {
-      tldPattern = colonMatch[1] || ".*"
-      tldName = colonMatch[2]
+  return { matchMode: "list", matchItems, suffix }
+}
+
+/**
+ * Parse the text that comes after ] in a list pattern.
+ *
+ * Possible forms:
+ *   (empty)              → no suffix
+ *   .com                 → literal '.com'
+ *   com                  → literal 'com'  (no dot — matches itemcom)
+ *   .(<regex>:name)      → dot + regex capture named 'name'
+ *   .(literal:name)      → dot + literal capture named 'name'
+ *   .(<regex>)           → dot + unnamed regex
+ *   .(literal)           → dot + unnamed literal
+ *   (<regex>:name)       → no dot + regex capture  (unusual but valid)
+ */
+function parseSuffix(str) {
+  str = str.trim()
+  if (!str) return { type: "none" }
+
+  let hasDot = false
+  let rest = str
+
+  if (str.startsWith(".")) {
+    hasDot = true
+    rest = str.slice(1) // strip the dot
+  }
+
+  if (rest.startsWith("(")) {
+    // Paren capture group: (pattern:name) or (<regex>:name)
+    const inner = rest.replace(/^\(/, "").replace(/\).*$/, "").trim()
+    const gtIdx = inner.indexOf(">")
+
+    let patternRaw, captureName
+
+    if (inner.startsWith("<") && gtIdx >= 0) {
+      // regex token  <pattern>:name  or  <pattern>
+      const regexContent = inner.slice(1, gtIdx)
+      const afterGt = inner.slice(gtIdx + 1).trim()
+      const cm = afterGt.match(/^:(\w+)$/)
+      patternRaw = convertNamedCaptures(regexContent)
+      captureName = cm ? cm[1] : null
     } else {
-      tldPattern = regexPart || ".*"
+      // literal token  literal:name  or  literal
+      const cm = inner.match(/^(.*):(\w+)$/)
+      if (cm) {
+        patternRaw = escapeRegex(cm[1])
+        captureName = cm[2]
+      } else {
+        patternRaw = escapeRegex(inner)
+        captureName = null
+      }
+    }
+
+    return {
+      type: "capture",
+      hasDot,
+      pattern: patternRaw,
+      captureName,
     }
   }
 
-  return { matchItems, tldPattern, tldName }
+  // Plain literal (with or without leading dot already stripped into hasDot)
+  // Re-attach dot for the literal so it matches correctly
+  return { type: "literal", text: hasDot ? "." + rest : rest }
 }
 
-function parseMatchItem(str) {
-  if (str.startsWith("/")) {
-    const regexStr = convertNamedCaptures(str.slice(1))
-    return { type: "regex", pattern: regexStr, source: str }
+function parseListItem(str) {
+  if (str.startsWith("<") && str.endsWith(">")) {
+    const inner = str.slice(1, -1)
+    return {
+      type: "regex",
+      pattern: convertNamedCaptures(inner),
+      source: str,
+    }
   }
   return { type: "literal", value: str, source: str }
 }
+
+// ── Format B: full-hostname capture ───────────────────────────────────────────
+
+function parseFullHostnamePattern(str) {
+  // (literal:name)  (<regex>:name)  (literal)  (<regex>)
+  const inner = str.replace(/^\(/, "").replace(/\).*$/, "").trim()
+  const gtIdx = inner.indexOf(">")
+
+  let pattern, captureName
+
+  if (inner.startsWith("<") && gtIdx >= 0) {
+    const regexContent = inner.slice(1, gtIdx)
+    const afterGt = inner.slice(gtIdx + 1).trim()
+    const cm = afterGt.match(/^:(\w+)$/)
+    pattern = convertNamedCaptures(regexContent)
+    captureName = cm ? cm[1] : null
+  } else {
+    const cm = inner.match(/^(.*):(\w+)$/)
+    if (cm) {
+      pattern = escapeRegex(cm[1])
+      captureName = cm[2]
+    } else {
+      pattern = escapeRegex(inner)
+      captureName = null
+    }
+  }
+
+  return {
+    matchMode: "full-hostname",
+    fullPattern: pattern,
+    captureName,
+  }
+}
+
+// ─── Replace Pattern ──────────────────────────────────────────────────────────
 
 function parseReplacePattern(str) {
   str = str.trim()
@@ -162,72 +308,74 @@ function parseReplacePattern(str) {
   const listEnd = str.indexOf("]")
 
   if (listStart >= 0 && listEnd > listStart) {
-    const listContent = str.slice(listStart + 1, listEnd)
-    const items = listContent
+    const items = str
+      .slice(listStart + 1, listEnd)
       .split("\n")
       .map((l) => l.trim())
       .filter((l) => l)
     const suffix = str.slice(listEnd + 1).trim()
-    return { items, suffix }
+    return { replaceItems: items, replaceSuffix: suffix }
   }
-
-  // Single item — no brackets
-  return { items: [str], suffix: "" }
+  return { replaceItems: [str], replaceSuffix: "" }
 }
 
-// ─── Matching & Redirect ─────────────────────────────────────────────────────
-
-function applyRules(urlStr, rules) {
-  let url
-  try {
-    url = new URL(urlStr)
-  } catch {
-    return null
-  }
-
-  const hostname = url.hostname
-
-  for (const rule of rules) {
-    const match = tryMatchRule(hostname, rule)
-    if (match) {
-      const item =
-        rule.replaceItems[
-          Math.floor(Math.random() * rule.replaceItems.length)
-        ]
-      const template = item + rule.replaceSuffix
-      const newHostname = applyTemplate(template, match.captures)
-
-      if (newHostname && newHostname !== hostname) {
-        const newUrl = new URL(urlStr)
-        newUrl.hostname = newHostname
-        return newUrl.toString()
-      }
-    }
-  }
-  return null
-}
-
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-}
+// ─── Matching ─────────────────────────────────────────────────────────────────
 
 function tryMatchRule(hostname, rule) {
-  const { matchItems, tldPattern, tldName, defaults } = rule
+  const defaults = rule.defaults || {}
+
+  // ── bare literal ──────────────────────────────────────────────────────────
+  if (rule.matchMode === "bare") {
+    return hostname === rule.bareLiteral
+      ? { captures: { ...defaults } }
+      : null
+  }
+
+  // ── full-hostname ─────────────────────────────────────────────────────────
+  if (rule.matchMode === "full-hostname") {
+    const captures = { ...defaults }
+    const capPart = rule.captureName
+      ? "(?<" + rule.captureName + ">" + rule.fullPattern + ")"
+      : "(?:" + rule.fullPattern + ")"
+    let re
+    try {
+      re = new RegExp("^" + capPart + "$")
+    } catch {
+      return null
+    }
+    const m = hostname.match(re)
+    if (!m) return null
+    if (m.groups) Object.assign(captures, m.groups)
+    return { captures }
+  }
+
+  // ── list ──────────────────────────────────────────────────────────────────
+  const { matchItems, suffix } = rule
+
+  // Build suffix regex once (same for all items)
+  let suffixRe = ""
+  let suffixCapName = null
+
+  if (suffix.type === "literal") {
+    suffixRe = escapeRegex(suffix.text)
+  } else if (suffix.type === "capture") {
+    if (suffix.hasDot) suffixRe += "\\."
+    suffixCapName = suffix.captureName
+    suffixRe += suffixCapName
+      ? "(?<" + suffixCapName + ">" + suffix.pattern + ")"
+      : "(?:" + suffix.pattern + ")"
+  }
+  // type === 'none' → suffixRe stays ''
 
   for (const item of matchItems) {
     const captures = { ...defaults }
-
-    // Build one regex for the full hostname: ^{hostPart}\.{tldPart}$
-    // Using a combined regex allows the engine to backtrack through lazy quantifiers.
     const hostPart =
       item.type === "literal" ? escapeRegex(item.value) : item.pattern
 
-    const tldPart = "(?<" + tldName + ">" + tldPattern + ")"
-
     let fullRe
     try {
-      fullRe = new RegExp("^(?:" + hostPart + ")\\." + tldPart + "$")
-    } catch (e) {
+      fullRe = new RegExp("^(?:" + hostPart + ")" + suffixRe + "$")
+    } catch {
       continue
     }
 
@@ -240,18 +388,60 @@ function tryMatchRule(hostname, rule) {
   return null
 }
 
+// ─── Template & URL Construction ──────────────────────────────────────────────
+
 function applyTemplate(template, captures) {
-  return template.replace(/\{(\w+)\}/g, (_, name) => {
-    return captures[name] !== undefined ? captures[name] : ""
-  })
+  return template.replace(/\{(\w+)\}/g, (_, name) =>
+    captures[name] !== undefined ? captures[name] : ""
+  )
 }
 
-// ─── Test Helper ─────────────────────────────────────────────────────────────
+function buildRedirectUrl(sourceUrl, resolved) {
+  if (!resolved) return null
+  try {
+    if (
+      resolved.includes("/") ||
+      resolved.includes("#") ||
+      resolved.includes("?")
+    ) {
+      return new URL(sourceUrl.protocol + "//" + resolved).toString()
+    }
+    const u = new URL(sourceUrl.toString())
+    u.hostname = resolved
+    return u.toString()
+  } catch {
+    return null
+  }
+}
 
-/**
- * Returns rich debug info about what happened when testing a URL.
- * Used by the editor test panel.
- */
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+function applyRules(urlStr, rules) {
+  let url
+  try {
+    url = new URL(urlStr)
+  } catch {
+    return null
+  }
+
+  for (const rule of rules) {
+    const match = tryMatchRule(url.hostname, rule)
+    if (match) {
+      const item =
+        rule.replaceItems[
+          Math.floor(Math.random() * rule.replaceItems.length)
+        ]
+      const resolved = applyTemplate(
+        item + rule.replaceSuffix,
+        match.captures
+      )
+      const redirect = buildRedirectUrl(url, resolved)
+      if (redirect && redirect !== urlStr) return redirect
+    }
+  }
+  return null
+}
+
 function testRules(urlStr, rules) {
   let url
   try {
@@ -261,33 +451,29 @@ function testRules(urlStr, rules) {
   }
 
   const hostname = url.hostname
-  const results = []
-
   for (let ri = 0; ri < rules.length; ri++) {
     const rule = rules[ri]
     const match = tryMatchRule(hostname, rule)
     if (match) {
       const allResults = rule.replaceItems.map((item) => {
-        const template = item + rule.replaceSuffix
-        const newHostname = applyTemplate(template, match.captures)
-        const newUrl = new URL(urlStr)
-        newUrl.hostname = newHostname
-        return newUrl.toString()
+        const resolved = applyTemplate(
+          item + rule.replaceSuffix,
+          match.captures
+        )
+        return buildRedirectUrl(url, resolved) || resolved
       })
-      results.push({
-        ruleIndex: ri,
-        captures: match.captures,
-        redirects: allResults,
-        chosen: allResults[0],
-      })
-      break // first matching rule wins
+      return {
+        url: urlStr,
+        hostname,
+        matched: true,
+        result: {
+          ruleIndex: ri,
+          captures: match.captures,
+          redirects: allResults,
+          chosen: allResults[0],
+        },
+      }
     }
   }
-
-  return {
-    url: urlStr,
-    hostname,
-    matched: results.length > 0,
-    result: results[0] || null,
-  }
+  return { url: urlStr, hostname, matched: false, result: null }
 }
