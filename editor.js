@@ -634,11 +634,10 @@ CodeMirror.registerHelper("fold", "domredir", function (cm, start) {
   }
 
   // 1. EXIT: Don't start on empty, comments, or lines that already have the arrow
-  if (
-    !trimmed ||
-    trimmed.startsWith(";") ||
-    trimmed.includes("->")
-  ) {
+  if (!trimmed || trimmed.startsWith(";") || trimmed.includes("->")) {
+    if (trimmed.includes("->")) {
+      addNumber(start.line)
+    }
     return undefined
   }
 
@@ -697,6 +696,8 @@ CodeMirror.registerHelper("fold", "domredir", function (cm, start) {
   }
 
   // 5. Final return
+  addNumber(start.line)
+
   if (foundArrowOnSubsequentLine && endLine > start.line) {
     lastDetectedEnd = endLine
     return {
@@ -707,3 +708,22 @@ CodeMirror.registerHelper("fold", "domredir", function (cm, start) {
 
   return undefined
 })
+function addGhostHint(line, ch, hintText) {
+  const span = document.createElement("span")
+  span.className = "cm-ghost-text"
+  span.textContent = hintText
+
+  // Insert the element at a specific position without changing the text
+  editor.setBookmark(
+    { line: line, ch: ch },
+    {
+      widget: span,
+      insertLeft: true, // Keeps the cursor to the left of the hint
+    },
+  )
+}
+var ruleIndex = 0
+function addNumber(line) {
+  ruleIndex += 1
+  addGhostHint(line, 0, "#" + ruleIndex + "\n")
+}
