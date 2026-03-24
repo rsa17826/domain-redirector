@@ -637,7 +637,7 @@ CodeMirror.registerHelper("fold", "domredir", function (cm, start) {
   if (
     !trimmed ||
     trimmed.startsWith(";") ||
-    lineText.includes("->")
+    trimmed.includes("->")
   ) {
     return undefined
   }
@@ -651,7 +651,10 @@ CodeMirror.registerHelper("fold", "domredir", function (cm, start) {
   let endLine = -1
 
   for (let i = start.line; i <= lastLine; i++) {
-    const line = cm.getLine(i)
+    var line = cm.getLine(i)
+    if (line.includes(";")) {
+      line = line.substring(0, line.indexOf(";"))
+    }
 
     // Process characters for depth and arrow detection
     asd: for (let j = 0; j < line.length; j++) {
