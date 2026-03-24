@@ -2,6 +2,8 @@
 
 This is a a flexible, regex-supported Domain Redirection System for redirecting websites as a chrome extensions. This project supports random destinations, named captures, and template-based URL construction.
 
+![editor image](./gh1.png)
+
 ---
 
 ## 🚀 Features
@@ -94,5 +96,3 @@ Use `;` to add notes. The parser ignores everything after the semicolon.
 ### Plans
 
 I plan to improve the syntax highlighting and add a formatter.
-
-![editor image](./gh1.png)
