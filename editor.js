@@ -674,19 +674,6 @@ document
 // ═══════════════════════════════════════════════════════════════════════
 
 CodeMirror.registerHelper("fold", "domredir", function (cm, start) {
-  // .forEach((rule, i) => {
-  //   if (rule.startLine == null || rule.startLine < 0) return
-  //   const el = document.createElement("span")
-  //   el.className = "cm-ghost-text"
-  //   el.textContent = "#" + (i + 1)
-  //   // setBookmark at ch:0 with insertLeft keeps it to the left of all text,
-  //   // never inside the [] list — we only call this for rule.startLine.
-  //   const bm = editor.setBookmark(
-  //     { line: rule.startLine, ch: 0 },
-  //     { widget: el, insertLeft: true },
-  //   )
-  //   ghostWidgets.push(bm)
-  // })
   var currentLineRule = currentRules.find((e) => e.startLine == start.line)
   if (currentLineRule) {
     var ruleLines = currentLineRule.text.split("\n")
