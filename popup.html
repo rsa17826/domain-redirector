@@ -132,7 +132,14 @@
       .switch input:checked + .slider::before {
         transform: translateX(18px);
       }
-
+      .no-transition,
+      .no-transition *,
+      .no-transition *::before,
+      .no-transition *::after {
+        transition: none !important;
+        transition-duration: 0s !important;
+        animation: none !important;
+      }
       .stats {
         padding: 10px 16px;
         border-bottom: 1px solid var(--border);

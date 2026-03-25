@@ -14,7 +14,14 @@ function updateStatus(enabled) {
 // Load state
 chrome.runtime.sendMessage({ type: "getState" }, (resp) => {
   if (resp) {
+    document.body.classList.add("no-transition")
+    // 1. Add the class immediately when the script runs (or hardcode it in HTML)
     updateStatus(resp.enabled)
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() =>
+        document.body.classList.remove("no-transition"),
+      ),
+    )
     ruleCountEl.textContent = resp.ruleCount
   }
 })
