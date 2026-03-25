@@ -3,7 +3,13 @@
   "name": "Domain Redirector",
   "version": "1.0.0",
   "description": "Redirect domains using a powerful custom rule language with regex, captures, and templates.",
-  "permissions": ["webNavigation", "tabs", "storage"],
+  "permissions": [
+    "declarativeNetRequest",
+    "webNavigation",
+    "storage",
+    "tabs",
+    "alarms"
+  ],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
