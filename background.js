@@ -7,7 +7,7 @@ let _enabled = true
 let _redirecting = new Set() // tab IDs currently being redirected (prevent loops)
 
 // ── Cache management ─────────────────────────────────────────────────────────
-
+getState()
 async function getState() {
   const data = await chrome.storage.sync.get({
     rulesText: "",
@@ -43,13 +43,13 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
     _redirecting.delete(details.tabId)
     return
   }
-
-  const { rules, enabled } = await getState()
-  if (!enabled || !rules.length) return
+  // dont wait for new data before each nav
+  getState()
+  if (!_enabled || !_cachedRules.length) return
 
   let redirect
   try {
-    redirect = applyRules(details.url, rules)
+    redirect = applyRules(details.url, _cachedRules)
   } catch (e) {
     console.error("[DomainRedirector] Error applying rules:", e)
     return
