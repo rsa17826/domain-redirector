@@ -674,59 +674,32 @@ document
 // ═══════════════════════════════════════════════════════════════════════
 
 CodeMirror.registerHelper("fold", "domredir", function (cm, start) {
-  const lineText = cm.getLine(start.line)
-  let trimmed = lineText.trim()
-  if (trimmed.includes(";"))
-    trimmed = trimmed.substring(0, trimmed.indexOf(";")).trim()
-
-  // Only try to fold from a real match-side start line
-  if (!trimmed || trimmed.startsWith(";") || trimmed.includes("->"))
-    return undefined
-  if (!/^[\[\(\<a-zA-Z0-9!]/.test(trimmed)) return undefined
-
-  const lastLine = cm.lastLine()
-  let depth = 0
-  let foundArrow = -1
-  let endLine = -1
-
-  for (let i = start.line; i <= lastLine; i++) {
-    let line = cm.getLine(i)
-    if (line.includes(";"))
-      line = line.substring(0, line.indexOf(";"))
-
-    for (let j = 0; j < line.length; j++) {
-      const c = line[j]
-      if (c === "[" || c === "(") depth++
-      else if (c === "]" || c === ")") depth--
-      if (depth === 0 && c === "-" && line[j + 1] === ">") {
-        if (i > start.line) foundArrow = i
-        else break // inline arrow on start line — not foldable
-      }
-    }
-
-    if (
-      depth === 0 &&
-      foundArrow !== -1 &&
-      foundArrow !== i &&
-      line.trim() !== ""
-    ) {
-      endLine = i
-      break
-    }
-    // Bail if we hit another non-empty top-level line before finding an arrow
-    if (
-      i > start.line &&
-      depth === 0 &&
-      line.trim() !== "" &&
-      foundArrow === -1
-    )
-      break
-  }
-
-  if (foundArrow !== -1 && endLine > start.line) {
+  // .forEach((rule, i) => {
+  //   if (rule.startLine == null || rule.startLine < 0) return
+  //   const el = document.createElement("span")
+  //   el.className = "cm-ghost-text"
+  //   el.textContent = "#" + (i + 1)
+  //   // setBookmark at ch:0 with insertLeft keeps it to the left of all text,
+  //   // never inside the [] list — we only call this for rule.startLine.
+  //   const bm = editor.setBookmark(
+  //     { line: rule.startLine, ch: 0 },
+  //     { widget: el, insertLeft: true },
+  //   )
+  //   ghostWidgets.push(bm)
+  // })
+  var currentLineRule = currentRules.find((e) => e.startLine == start.line)
+  console.log(currentLineRule, start)
+  if (currentLineRule) {
+    var ruleLines = currentLineRule.text.split("\n")
     return {
-      from: CodeMirror.Pos(start.line, lineText.length),
-      to: CodeMirror.Pos(endLine, cm.getLine(endLine).length),
+      from: CodeMirror.Pos(
+        currentLineRule.startLine,
+        ruleLines[0].length,
+      ),
+      to: CodeMirror.Pos(
+        currentLineRule.startLine + ruleLines.length-1,
+        ruleLines[ruleLines.length - 1].length,
+      ),
     }
   }
   return undefined

@@ -135,12 +135,13 @@ function parseRulesText(text) {
   const finalTrimmed = currentBlock.trim()
   if (finalTrimmed)
     blocks.push({ text: finalTrimmed, startLine: blockStartLine })
-
+  debugger
   const rules = []
   for (const { text: blockText, startLine } of blocks) {
     try {
       const rule = parseRuleBlock(blockText)
       if (rule) {
+        rule.text = blockText
         rule.startLine = startLine
         rules.push(rule)
       }
