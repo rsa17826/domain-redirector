@@ -83,22 +83,36 @@ function parseRulesText(text) {
   let depth = 0
   let newlineCount = 0
   let onRightSide = false
-  // Manual iteration to track bracket depth for robust splitting
+  // Track line numbers: currentLineNum increments on each \n; blockStartLine records
+  // the line of the first non-whitespace char of the current block.
+  let currentLineNum = 0
+  let blockStartLine = -1
+
   for (let i = 0; i < cleaned.length; i++) {
     const char = cleaned[i]
 
     if (char === "[" || char === "(") depth++
     else if (char === "]" || char === ")") depth--
 
+    // Record start line of this block on first real char
+    if (
+      blockStartLine === -1 &&
+      char !== "\n" &&
+      char.trim() !== ""
+    ) {
+      blockStartLine = currentLineNum
+    }
+
     currentBlock += char
 
     if (char === "\n") {
       newlineCount++
+      currentLineNum++
     } else if (char.trim() !== "") {
       newlineCount = 0
     }
 
-    // Split only if we see a double newline AND we are at the top level
+    // Split only if we see a newline AND we are at the top level after the arrow
     if (
       depth === 0 &&
       onRightSide &&
@@ -106,10 +120,12 @@ function parseRulesText(text) {
       !currentBlock.trim().endsWith("->")
     ) {
       const trimmed = currentBlock.trim()
-      if (trimmed) blocks.push(trimmed)
+      if (trimmed)
+        blocks.push({ text: trimmed, startLine: blockStartLine })
       onRightSide = false
       currentBlock = ""
       newlineCount = 0
+      blockStartLine = -1
     }
     if (depth === 0 && char == "-" && cleaned[i + 1] == ">") {
       onRightSide = true
@@ -117,19 +133,23 @@ function parseRulesText(text) {
   }
 
   const finalTrimmed = currentBlock.trim()
-  if (finalTrimmed) blocks.push(finalTrimmed)
+  if (finalTrimmed)
+    blocks.push({ text: finalTrimmed, startLine: blockStartLine })
 
   const rules = []
-  for (const block of blocks) {
+  for (const { text: blockText, startLine } of blocks) {
     try {
-      const rule = parseRuleBlock(block)
-      if (rule) rules.push(rule)
+      const rule = parseRuleBlock(blockText)
+      if (rule) {
+        rule.startLine = startLine
+        rules.push(rule)
+      }
     } catch (e) {
       console.warn(
         "[DomainRedirector] Rule parse error:",
         e.message,
         "\nBlock:",
-        block,
+        blockText,
       )
     }
   }

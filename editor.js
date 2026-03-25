@@ -360,12 +360,14 @@ function validateRules() {
       currentRules.length +
       " rule" +
       (currentRules.length !== 1 ? "s" : "")
+    rebuildGhostNumbers()
   } catch (e) {
     const el = document.createElement("div")
     el.className = "error-item"
     el.textContent = "⚠ " + e.message
     errorsPanel.appendChild(el)
     currentRules = []
+    clearGhostText()
   }
 }
 
@@ -520,9 +522,7 @@ function renderTestResult(result) {
     </div>
     <div class="test-match-row">
       <span class="test-match-label">RULE</span>
-      <span class="test-match-value rule-idx">#${
-        r.ruleIndex + 1
-      }</span>
+      <span class="test-match-value rule-idx" data-rule-idx="${r.ruleIndex}" title="Jump to rule in editor">⬡ #${r.ruleIndex + 1}</span>
     </div>
     <div class="test-match-row">
       <span class="test-match-label">OUTPUT</span>
@@ -611,119 +611,123 @@ function waitForCodeMirror(cb, attempts = 0) {
 }
 
 waitForCodeMirror(initEditor)
-// ─── Fold Helper for ; region / ; endregion ─────────────────────────────────
-function stripComments(text) {
-  return text
-    .split("\n")
-    .map((line) => {
-      const idx = line.indexOf(";")
-      return idx >= 0 ? line.slice(0, idx) : line
-    })
-    .join("\n")
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Ghost rule numbers — placed ONLY at the first line of each parsed rule
+// ═══════════════════════════════════════════════════════════════════════
+
+let ghostWidgets = [] // array of { widget, lineHandle } from addLineWidget
+
+function clearGhostText() {
+  ghostWidgets.forEach((w) => w.clear())
+  ghostWidgets = []
 }
-var lastDetectedEnd = -1
+
+function rebuildGhostNumbers() {
+  clearGhostText()
+  if (!editor) return
+  currentRules.forEach((rule, i) => {
+    if (rule.startLine == null || rule.startLine < 0) return
+    const el = document.createElement("span")
+    el.className = "cm-ghost-text"
+    el.textContent = "#" + (i + 1)
+    // setBookmark at ch:0 with insertLeft keeps it to the left of all text,
+    // never inside the [] list — we only call this for rule.startLine.
+    const bm = editor.setBookmark(
+      { line: rule.startLine, ch: 0 },
+      { widget: el, insertLeft: true },
+    )
+    ghostWidgets.push(bm)
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Jump to rule (called when RULE# badge is clicked in test panel)
+// ═══════════════════════════════════════════════════════════════════════
+
+function jumpToRule(ruleIndex) {
+  const rule = currentRules[ruleIndex]
+  if (!rule || rule.startLine == null) return
+  const line = rule.startLine
+  editor.scrollIntoView({ line, ch: 0 }, 120)
+  editor.setCursor({ line, ch: 0 })
+  // Flash highlight: add class, remove after animation
+  editor.addLineClass(line, "background", "cm-rule-jump-line")
+  setTimeout(
+    () =>
+      editor.removeLineClass(line, "background", "cm-rule-jump-line"),
+    1400,
+  )
+  editor.focus()
+}
+
+// Delegated click handler on the whole testResult container
+document
+  .getElementById("testResult")
+  .addEventListener("click", (e) => {
+    const el = e.target.closest("[data-rule-idx]")
+    if (el) jumpToRule(parseInt(el.dataset.ruleIdx, 10))
+  })
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Fold helper — rule blocks only; numbering is now handled separately
+// ═══════════════════════════════════════════════════════════════════════
+
 CodeMirror.registerHelper("fold", "domredir", function (cm, start) {
-  if (lastDetectedEnd == start.line) {
-    lastDetectedEnd = -1
-    return
-  }
   const lineText = cm.getLine(start.line)
-  var trimmed = lineText.trim()
-  if (trimmed.includes(";")) {
-    trimmed = trimmed.substring(0, trimmed.indexOf(";"))
-  }
+  let trimmed = lineText.trim()
+  if (trimmed.includes(";"))
+    trimmed = trimmed.substring(0, trimmed.indexOf(";")).trim()
 
-  // 1. EXIT: Don't start on empty, comments, or lines that already have the arrow
-  if (!trimmed || trimmed.startsWith(";") || trimmed.includes("->")) {
-    if (trimmed.includes("->")) {
-      addNumber(start.line)
-    }
+  // Only try to fold from a real match-side start line
+  if (!trimmed || trimmed.startsWith(";") || trimmed.includes("->"))
     return undefined
-  }
-
-  // 2. EXIT: Only start if the line looks like a Match Side (starts with [, (, <, or Alphanumeric)
-  if (!/^[\[\(\<a-zA-Z0-9]/.test(trimmed)) return undefined
+  if (!/^[\[\(\<a-zA-Z0-9!]/.test(trimmed)) return undefined
 
   const lastLine = cm.lastLine()
   let depth = 0
-  let foundArrowOnSubsequentLine = -1
+  let foundArrow = -1
   let endLine = -1
 
   for (let i = start.line; i <= lastLine; i++) {
-    var line = cm.getLine(i)
-    if (line.includes(";")) {
+    let line = cm.getLine(i)
+    if (line.includes(";"))
       line = line.substring(0, line.indexOf(";"))
-    }
 
-    // Process characters for depth and arrow detection
-    asd: for (let j = 0; j < line.length; j++) {
-      const char = line[j]
-      if (char === "[" || char === "(") depth++
-      else if (char === "]" || char === ")") depth--
-
-      // Look for -> at the top level on any line AFTER the start line
-      if (depth === 0 && char === "-" && line[j + 1] === ">") {
-        if (i > start.line) foundArrowOnSubsequentLine = i
-        else {
-          break asd
-        }
+    for (let j = 0; j < line.length; j++) {
+      const c = line[j]
+      if (c === "[" || c === "(") depth++
+      else if (c === "]" || c === ")") depth--
+      if (depth === 0 && c === "-" && line[j + 1] === ">") {
+        if (i > start.line) foundArrow = i
+        else break // inline arrow on start line — not foldable
       }
     }
 
-    // 3. Block End Logic: Depth 0 + Found Arrow + Double Newline (or EOF)
-    const hasContentAfterArrow = !(
-      line === undefined || line.trim() === ""
-    )
     if (
       depth === 0 &&
-      foundArrowOnSubsequentLine != -1 &&
-      foundArrowOnSubsequentLine != i &&
-      hasContentAfterArrow
+      foundArrow !== -1 &&
+      foundArrow !== i &&
+      line.trim() !== ""
     ) {
       endLine = i
       break
     }
-
-    // 4. Safety: If we hit another potential rule start before finding an arrow, kill this fold
+    // Bail if we hit another non-empty top-level line before finding an arrow
     if (
       i > start.line &&
       depth === 0 &&
       line.trim() !== "" &&
-      !foundArrowOnSubsequentLine
-    ) {
+      foundArrow === -1
+    )
       break
-    }
   }
 
-  // 5. Final return
-  addNumber(start.line)
-
-  if (foundArrowOnSubsequentLine && endLine > start.line) {
-    lastDetectedEnd = endLine
+  if (foundArrow !== -1 && endLine > start.line) {
     return {
       from: CodeMirror.Pos(start.line, lineText.length),
       to: CodeMirror.Pos(endLine, cm.getLine(endLine).length),
     }
   }
-
   return undefined
 })
-function addGhostHint(line, ch, hintText) {
-  const span = document.createElement("span")
-  span.className = "cm-ghost-text"
-  span.textContent = hintText
-
-  // Insert the element at a specific position without changing the text
-  editor.setBookmark(
-    { line: line, ch: ch },
-    {
-      widget: span,
-      insertLeft: true, // Keeps the cursor to the left of the hint
-    },
-  )
-}
-var ruleIndex = 0
-function addNumber(line) {
-  ruleIndex += 1
-  addGhostHint(line, 0, "#" + ruleIndex + "\n")
-}

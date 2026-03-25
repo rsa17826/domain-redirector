@@ -352,7 +352,14 @@ kbd {
 }
 
 .test-match-value.redirect { color: var(--green); font-weight: 600; }
-.test-match-value.rule-idx { color: var(--accent); }
+.test-match-value.rule-idx {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline dotted var(--accent);
+  text-underline-offset: 2px;
+  transition: color 0.12s;
+}
+.test-match-value.rule-idx:hover { color: #79c0ff; }
 .test-match-value.no-match { color: var(--red); }
 
 .test-captures {
@@ -505,6 +512,39 @@ kbd {
 }
 .statusbar span { display: flex; align-items: center; gap: 4px; }
 .statusbar .sep { color: var(--border); }
+
+/* ── Ghost rule numbers ─────────────────────────────────────────────── */
+
+/* The #N tag that appears inline before the first token of each rule */
+.cm-ghost-text {
+  display: inline-block;
+  color: #444c56;
+  font-size: 9.5px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  margin-right: 7px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(88, 166, 255, 0.07);
+  border: 1px solid rgba(88, 166, 255, 0.12);
+  user-select: none;
+  pointer-events: none;
+  vertical-align: middle;
+  line-height: 1;
+  position: relative;
+  top: -1px;
+}
+
+/* Flash highlight when jumping to a rule from the test panel */
+.cm-rule-jump-line {
+  background: rgba(88, 166, 255, 0.10) !important;
+  animation: ruleJumpFade 1.4s ease-out forwards;
+}
+@keyframes ruleJumpFade {
+  0%   { background: rgba(88, 166, 255, 0.22) !important; }
+  100% { background: rgba(88, 166, 255, 0.00) !important; }
+}
 
 /* ── Error list ──────────────────────────────────────────────────────── */
 
