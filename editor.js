@@ -688,7 +688,6 @@ CodeMirror.registerHelper("fold", "domredir", function (cm, start) {
   //   ghostWidgets.push(bm)
   // })
   var currentLineRule = currentRules.find((e) => e.startLine == start.line)
-  console.log(currentLineRule, start)
   if (currentLineRule) {
     var ruleLines = currentLineRule.text.split("\n")
     return {
