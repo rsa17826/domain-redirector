@@ -11,7 +11,7 @@ CodeMirror.defineMode("domredir", function () {
     DEFAULT_BANG: "default-bang", // just consumed !
     // DEFAULT_NAME: "default-name", // reading the capture name after !
     DEFAULT_VAL: "default-val", // reading the default value
-    MATCH_LIST: "match-list", // inside [ ]
+    MATCH_OR_REPLACE_LIST: "match-list", // inside [ ]
     REGEX_ITEM: "regex-item", // inside < > within match list
     SUFFIX: "suffix", // after ] on match side
     SUFFIX_PAREN: "suffix-paren", // inside ( ) after ]
@@ -72,28 +72,43 @@ CodeMirror.defineMode("domredir", function () {
 
       // ── [ open bracket ────────────────────────────────────────────────
       if (ch === "[") {
-        state.ctx = CTX.MATCH_LIST
+        state.ctx = CTX.MATCH_OR_REPLACE_LIST
         return "domredir-bracket"
       }
 
       // ── ] close bracket ───────────────────────────────────────────────
       if (ch === "]") {
-        if (state.ctx === CTX.MATCH_LIST) state.ctx = CTX.SUFFIX
-        // else if (state.ctx === CTX.REPLACE_LIST) state.ctx = CTX.TOP
+        if (state.ctx === CTX.MATCH_OR_REPLACE_LIST)
+          state.ctx = CTX.SUFFIX
         return "domredir-bracket"
       }
 
       // ── < open angle — start of regex ────────────────────────────────
       if (ch === "<") {
         state.angleDepth++
-        if (state.ctx === CTX.MATCH_LIST) state.ctx = CTX.REGEX_ITEM
-        else if (
+        if (state.ctx === CTX.MATCH_OR_REPLACE_LIST) {
+          state.ctx = CTX.REGEX_ITEM
+        } else if (
           state.ctx === CTX.SUFFIX_PAREN ||
-          state.ctx === CTX.FULL_PAREN
-        )
+          state.ctx === CTX.FULL_PAREN ||
+          state.ctx === CTX.TOP ||
+          state.ctx === CTX.SUFFIX
+        ) {
           state.ctx = CTX.INNER_REGEX
+        }
         return "domredir-angle"
       }
+      // if (ch === "<") {
+      //   state.angleDepth++
+      //   if (state.ctx === CTX.MATCH_OR_REPLACE_LIST)
+      //     state.ctx = CTX.REGEX_ITEM
+      //   else if (
+      //     state.ctx === CTX.SUFFIX_PAREN ||
+      //     state.ctx === CTX.FULL_PAREN
+      //   )
+      //     state.ctx = CTX.INNER_REGEX
+      //   return "domredir-angle"
+      // }
 
       // ── > close angle — end of regex ─────────────────────────────────
       // Guard: only act as angle-close if we are actually inside a regex.
@@ -102,7 +117,8 @@ CodeMirror.defineMode("domredir", function () {
       // the guard is defense-in-depth.
       if (ch === ">" && state.angleDepth > 0) {
         state.angleDepth--
-        if (state.ctx === CTX.REGEX_ITEM) state.ctx = CTX.MATCH_LIST
+        if (state.ctx === CTX.REGEX_ITEM)
+          state.ctx = CTX.MATCH_OR_REPLACE_LIST
         else if (state.ctx === CTX.INNER_REGEX)
           state.ctx =
             state.parenDepth > 0 ? CTX.SUFFIX_PAREN : CTX.SUFFIX
@@ -110,17 +126,19 @@ CodeMirror.defineMode("domredir", function () {
       }
 
       // ── ( open paren ──────────────────────────────────────────────────
-      if (ch === "(") {
+      // ── ) close paren ─────────────────────────────────────────────────
+      if (ch === "`") {
+        if (
+          state.ctx == CTX.FULL_PAREN ||
+          state.ctx == CTX.SUFFIX_PAREN
+        ) {
+          state.parenDepth = Math.max(0, state.parenDepth - 1)
+          if (state.parenDepth === 0) state.ctx = CTX.TOP
+          return "domredir-paren"
+        }
         state.parenDepth++
         if (state.ctx === CTX.SUFFIX) state.ctx = CTX.SUFFIX_PAREN
         else if (state.ctx === CTX.TOP) state.ctx = CTX.FULL_PAREN
-        return "domredir-paren"
-      }
-
-      // ── ) close paren ─────────────────────────────────────────────────
-      if (ch === ")") {
-        state.parenDepth = Math.max(0, state.parenDepth - 1)
-        if (state.parenDepth === 0) state.ctx = CTX.TOP
         return "domredir-paren"
       }
 
@@ -158,17 +176,44 @@ CodeMirror.defineMode("domredir", function () {
       // and leaving a stray ">" that would corrupt state.
       stream.eatWhile((c) => {
         if (/[;{}\[\]()<>.:\n]/.test(c)) return false
-        // stop at the start of "->" so the next token() call can match it whole
+        if (c === "-" && stream.string[stream.pos + 1] === ">")
+          return false
+        return true
+      })
+      // ── Content by context ────────────────────────────────────────────
+
+      // 1. Handle Regex Operators specifically
+      if (
+        state.ctx === CTX.REGEX_ITEM ||
+        state.ctx === CTX.INNER_REGEX
+      ) {
+        const regexOps = /[\\^$.*+?()[\]{}|]/
+        if (regexOps.test(ch)) {
+          return "domredir-regex-op" // New token type for operators
+        }
+      }
+
+      // 2. Fallback for general text
+      // Stop before delimiters or the "->" arrow
+      stream.eatWhile((c) => {
+        if (/[;{}\[\]()<>.:\n]/.test(c)) return false
+
+        // If in regex mode, also stop at operators to let them be colored individually
+        if (
+          (state.ctx === CTX.REGEX_ITEM ||
+            state.ctx === CTX.INNER_REGEX) &&
+          /[\\^$.*+?()[\]{}|]/.test(c)
+        ) {
+          return false
+        }
+
         if (c === "-" && stream.string[stream.pos + 1] === ">")
           return false
         return true
       })
 
       switch (state.ctx) {
-        case CTX.MATCH_LIST:
-          return "domredir-literal"
         case CTX.REGEX_ITEM:
-          return "domredir-regex"
         case CTX.INNER_REGEX:
           return "domredir-regex"
         case CTX.SUFFIX_PAREN:
@@ -178,6 +223,8 @@ CodeMirror.defineMode("domredir", function () {
         case CTX.SUFFIX:
           return "domredir-tld"
         case CTX.TOP:
+          return "domredir-literal"
+        case CTX.MATCH_OR_REPLACE_LIST:
           return "domredir-literal"
         default:
           return null
@@ -674,7 +721,9 @@ document
 // ═══════════════════════════════════════════════════════════════════════
 
 CodeMirror.registerHelper("fold", "domredir", function (cm, start) {
-  var currentLineRule = currentRules.find((e) => e.startLine == start.line)
+  var currentLineRule = currentRules.find(
+    (e) => e.startLine == start.line,
+  )
   if (currentLineRule) {
     var ruleLines = currentLineRule.text.split("\n")
     return {
@@ -683,7 +732,7 @@ CodeMirror.registerHelper("fold", "domredir", function (cm, start) {
         ruleLines[0].length,
       ),
       to: CodeMirror.Pos(
-        currentLineRule.startLine + ruleLines.length-1,
+        currentLineRule.startLine + ruleLines.length - 1,
         ruleLines[ruleLines.length - 1].length,
       ),
     }
