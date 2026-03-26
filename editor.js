@@ -115,8 +115,7 @@ CodeMirror.defineMode("domredir", function () {
       // Without this, a stray ">" (e.g. from "eatWhile eating com->" badly)
       // would corrupt context. Now fixed via eatWhile lookahead too, but
       // the guard is defense-in-depth.
-      if (ch === ">" && state.angleDepth > 0) {
-        state.angleDepth--
+      if (ch === ">") {
         if (state.ctx === CTX.REGEX_ITEM)
           state.ctx = CTX.MATCH_OR_REPLACE_LIST
         else if (state.ctx === CTX.INNER_REGEX)
@@ -126,19 +125,16 @@ CodeMirror.defineMode("domredir", function () {
       }
 
       // ── ( open paren ──────────────────────────────────────────────────
-      // ── ) close paren ─────────────────────────────────────────────────
       if (ch === "`") {
-        if (
-          state.ctx == CTX.FULL_PAREN ||
-          state.ctx == CTX.SUFFIX_PAREN
-        ) {
-          state.parenDepth = Math.max(0, state.parenDepth - 1)
-          if (state.parenDepth === 0) state.ctx = CTX.TOP
-          return "domredir-paren"
-        }
         state.parenDepth++
         if (state.ctx === CTX.SUFFIX) state.ctx = CTX.SUFFIX_PAREN
         else if (state.ctx === CTX.TOP) state.ctx = CTX.FULL_PAREN
+        return "domredir-paren"
+      }
+      // ── ) close paren ─────────────────────────────────────────────────
+      if (ch === "~") {
+        state.parenDepth = Math.max(0, state.parenDepth - 1)
+        if (state.parenDepth === 0) state.ctx = CTX.TOP
         return "domredir-paren"
       }
 
