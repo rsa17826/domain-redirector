@@ -17,10 +17,12 @@
         --text: #e6edf3;
         --muted: #7d8590;
         --accent: #58a6ff;
-        --accent-dim: #1f3d6e;
         --green: #3fb950;
+        --green-dim: #1a3a20;
         --red: #f85149;
-        --orange: #d29922;
+        --red-dim: #3d1717;
+        --yellow: #e3b341;
+        --yellow-dim: #2d2208;
         --radius: 6px;
       }
 
@@ -38,14 +40,23 @@
         user-select: none;
       }
 
+      /* suppress toggle animation on first paint */
+      .no-transition,
+      .no-transition *,
+      .no-transition *::before,
+      .no-transition *::after {
+        transition: none !important;
+        animation: none !important;
+      }
+
+      /* ── Header ── */
       .header {
         display: flex;
         align-items: center;
         gap: 10px;
-        padding: 14px 16px 12px;
+        padding: 13px 16px 11px;
         border-bottom: 1px solid var(--border);
       }
-
       .logo {
         width: 28px;
         height: 28px;
@@ -57,11 +68,9 @@
         font-size: 14px;
         flex-shrink: 0;
       }
-
       .title {
         font-weight: 600;
         font-size: 14px;
-        color: var(--text);
       }
       .subtitle {
         font-size: 11px;
@@ -69,14 +78,56 @@
         margin-top: 1px;
       }
 
+      /* ── Mode badge (blocking / standard) ── */
+      .mode-banner {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 6px 16px;
+        border-bottom: 1px solid var(--border);
+        font-size: 11px;
+      }
+      .mode-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .mode-label {
+        font-weight: 600;
+      }
+      .mode-desc {
+        color: var(--muted);
+      }
+
+      /* blocking = green, non-blocking = yellow */
+      .mode-banner.blocking {
+        background: rgba(63, 185, 80, 0.06);
+      }
+      .mode-banner.standard {
+        background: rgba(227, 179, 65, 0.06);
+      }
+      .mode-banner.blocking .mode-dot {
+        background: var(--green);
+      }
+      .mode-banner.standard .mode-dot {
+        background: var(--yellow);
+      }
+      .mode-banner.blocking .mode-label {
+        color: var(--green);
+      }
+      .mode-banner.standard .mode-label {
+        color: var(--yellow);
+      }
+
+      /* ── Toggle row ── */
       .toggle-row {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 14px 16px;
+        padding: 13px 16px;
         border-bottom: 1px solid var(--border);
       }
-
       .toggle-label {
         display: flex;
         flex-direction: column;
@@ -132,21 +183,14 @@
       .switch input:checked + .slider::before {
         transform: translateX(18px);
       }
-      .no-transition,
-      .no-transition *,
-      .no-transition *::before,
-      .no-transition *::after {
-        transition: none !important;
-        transition-duration: 0s !important;
-        animation: none !important;
-      }
+
+      /* ── Stats ── */
       .stats {
         padding: 10px 16px;
         border-bottom: 1px solid var(--border);
         display: flex;
         gap: 16px;
       }
-
       .stat {
         display: flex;
         flex-direction: column;
@@ -165,13 +209,13 @@
         letter-spacing: 0.5px;
       }
 
+      /* ── Actions ── */
       .actions {
         padding: 10px;
         display: flex;
         flex-direction: column;
         gap: 6px;
       }
-
       .btn {
         display: flex;
         align-items: center;
@@ -186,7 +230,6 @@
         transition:
           background 0.15s,
           border-color 0.15s;
-        text-decoration: none;
         width: 100%;
       }
       .btn:hover {
@@ -203,7 +246,6 @@
         background: #79c0ff;
         border-color: #79c0ff;
       }
-
       .btn-icon {
         font-size: 14px;
         width: 18px;
@@ -211,7 +253,7 @@
       }
 
       .footer {
-        padding: 8px 16px;
+        padding: 7px 16px;
         font-size: 10px;
         color: var(--muted);
         border-top: 1px solid var(--border);
@@ -226,6 +268,13 @@
         <div class="title">Domain Redirector</div>
         <div class="subtitle">URL rewrite rules engine</div>
       </div>
+    </div>
+
+    <!-- Redirect mode indicator -->
+    <div class="mode-banner" id="modeBanner">
+      <span class="mode-dot"></span>
+      <span class="mode-label" id="modeLabel">—</span>
+      <span class="mode-desc" id="modeDesc">detecting…</span>
     </div>
 
     <div class="toggle-row">
