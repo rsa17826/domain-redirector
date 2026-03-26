@@ -125,14 +125,14 @@ CodeMirror.defineMode("domredir", function () {
       }
 
       // ── ( open paren ──────────────────────────────────────────────────
-      if (ch === "`") {
+      if (ch === "(") {
         state.parenDepth++
         if (state.ctx === CTX.SUFFIX) state.ctx = CTX.SUFFIX_PAREN
         else if (state.ctx === CTX.TOP) state.ctx = CTX.FULL_PAREN
         return "domredir-paren"
       }
       // ── ) close paren ─────────────────────────────────────────────────
-      if (ch === "~") {
+      if (ch === ")") {
         state.parenDepth = Math.max(0, state.parenDepth - 1)
         if (state.parenDepth === 0) state.ctx = CTX.TOP
         return "domredir-paren"

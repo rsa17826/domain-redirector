@@ -91,8 +91,8 @@ function parseRulesText(text) {
   for (let i = 0; i < cleaned.length; i++) {
     const char = cleaned[i]
 
-    if (char === "[" || char === "`") depth++
-    else if (char === "]" || char === "~") depth--
+    if (char === "[" || char === "(") depth++
+    else if (char === "]" || char === ")") depth--
 
     // Record start line of this block on first real char
     if (
