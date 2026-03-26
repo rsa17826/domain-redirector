@@ -162,43 +162,30 @@ CodeMirror.defineMode("domredir", function () {
       }
 
       // ── . dot ─────────────────────────────────────────────────────────
-      // On replace side (afterArrow) dots are part of the hostname template
-      // so colour them the same as replace-literal (orange).
-      // On match side suffix they get a muted colour to visually separate.
       if (ch === ".") {
         if (state.ctx === CTX.SUFFIX || state.ctx === CTX.TOP)
           return "domredir-replace-literal"
-        // return "domredir-dot"
       }
 
-      // ── Content by context ────────────────────────────────────────────
-      // IMPORTANT: also stop before "->" to prevent eating the "-" of the arrow
-      // and leaving a stray ">" that would corrupt state.
-      stream.eatWhile((c) => {
-        if (/[;{}\[\]()<>.:\n]/.test(c)) return false
-        if (c === "-" && stream.string[stream.pos + 1] === ">")
-          return false
-        return true
-      })
-      // ── Content by context ────────────────────────────────────────────
+      // ── Content & Regex Operator Logic ────────────────────────────────
 
-      // 1. Handle Regex Operators specifically
+      // 1. Check if the CURRENT character (ch) is a regex operator
       if (
         state.ctx === CTX.REGEX_ITEM ||
         state.ctx === CTX.INNER_REGEX
       ) {
         const regexOps = /[\\^$.*+?()[\]{}|]/
         if (regexOps.test(ch)) {
-          return "domredir-regex-op" // New token type for operators
+          return "domredir-regex-op"
         }
       }
 
-      // 2. Fallback for general text
-      // Stop before delimiters or the "->" arrow
+      // 2. Consume the rest of the "word" or "chunk"
       stream.eatWhile((c) => {
+        // Stop at delimiters
         if (/[;{}\[\]()<>.:\n]/.test(c)) return false
 
-        // If in regex mode, also stop at operators to let them be colored individually
+        // If in regex mode, stop at operators so they can be processed by step #1 in the next call
         if (
           (state.ctx === CTX.REGEX_ITEM ||
             state.ctx === CTX.INNER_REGEX) &&
@@ -207,11 +194,14 @@ CodeMirror.defineMode("domredir", function () {
           return false
         }
 
+        // Stop before the arrow
         if (c === "-" && stream.string[stream.pos + 1] === ">")
           return false
+
         return true
       })
 
+      // 3. Return the style based on context
       switch (state.ctx) {
         case CTX.REGEX_ITEM:
         case CTX.INNER_REGEX:
@@ -594,6 +584,8 @@ function esc(str) {
 // ═══════════════════════════════════════════════════════════════════════
 
 const TOKEN_CSS = `
+.cm-s-dracula .cm-domredir-regex-op { color: #ff79c6; font-weight: bold; }
+
 .cm-s-dracula .cm-domredir-comment          { color: #5c6370; font-style: italic; }
 
 /* !name default  — three distinct tokens */

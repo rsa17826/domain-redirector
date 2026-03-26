@@ -40,7 +40,7 @@ chrome.runtime.sendMessage({ type: "getState" }, (resp) => {
   // Suppress toggle animation on first paint
   document.body.classList.add("no-transition")
   updateStatus(resp.enabled)
-  applyMode(resp.blockingMode&&0)
+  applyMode(resp.blockingMode)
   ruleCountEl.textContent = resp.ruleCount
   requestAnimationFrame(() =>
     requestAnimationFrame(() =>
